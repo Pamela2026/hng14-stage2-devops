@@ -30,7 +30,11 @@ signal.signal(signal.SIGTERM, exit_gracefully)
 signal.signal(signal.SIGINT, exit_gracefully)
 
 while True:
-    job = r.brpop("job", timeout=5)
-    if job:
-        _, job_id = job
-        process_job(job_id.decode())
+    try:
+        job = r.brpop("job", timeout=5)
+        if job:
+            _, job_id = job
+            process_job(job_id.decode())
+    except Exception as e:
+        print(f"Error: {e}, retrying...")
+        time.sleep(1)

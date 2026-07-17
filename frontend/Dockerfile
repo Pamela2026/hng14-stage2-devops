@@ -16,12 +16,13 @@ FROM node:18-alpine AS production
 WORKDIR /app
 
 # Create non-root user for security
-RUN addgroup -g 1000 appgroup && adduser -D -u 1000 -G appgroup appuser
+RUN addgroup -g 1001 appgroup && adduser -D -u 1001 -G appgroup appuser
 
 # Copy production dependencies and application code from deps stage
 COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
-COPY --from=deps --chown=appuser:appgroup /app/app.js ./
-COPY --from=deps --chown=appuser:appgroup /app/views ./views
+COPY --chown=appuser:appgroup package*.json ./
+COPY --chown=appuser:appgroup app.js ./
+COPY --chown=appuser:appgroup views ./views
 
 # Set runtime environment defaults
 ENV NODE_ENV=production
@@ -31,7 +32,7 @@ USER appuser
 
 EXPOSE 3000
 
+CMD ["node", "app.js"]
+
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD node -e "require('http').get('http://localhost:3000/', res => process.exit(res.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1))"
-
-CMD ["npm", "start"]
