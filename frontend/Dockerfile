@@ -22,7 +22,7 @@ RUN apk update && apk upgrade --no-cache \
 
 # Copy production dependencies and application code from deps stage
 COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
-COPY --chown=appuser:appgroup package*.json ./
+COPY --chown=appuser:appgroup package.json ./
 COPY --chown=appuser:appgroup app.js ./
 COPY --chown=appuser:appgroup views ./views
 
