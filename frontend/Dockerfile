@@ -15,9 +15,9 @@ FROM node:20-alpine AS production
 
 WORKDIR /app
 
-# Upgrade Alpine packages and npm (clears tar CVE bundled in npm), then create non-root user
+# Upgrade Alpine packages, remove npm (not needed at runtime), then create non-root user
 RUN apk update && apk upgrade --no-cache \
-    && npm install -g npm@10.9.2 \
+    && rm -rf /usr/lib/node_modules/npm \
     && addgroup -g 1001 appgroup && adduser -D -u 1001 -G appgroup appuser
 
 # Copy production dependencies and application code from deps stage
