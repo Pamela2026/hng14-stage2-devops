@@ -10,8 +10,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Create non-root user
-RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+# Upgrade OS packages to clear known CVEs, then create non-root user
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 
 # Copy dependency installation from builder
 COPY --from=builder /install /install

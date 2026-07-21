@@ -15,8 +15,9 @@ FROM node:18-alpine AS production
 
 WORKDIR /app
 
-# Create non-root user for security
-RUN addgroup -g 1001 appgroup && adduser -D -u 1001 -G appgroup appuser
+# Upgrade Alpine packages to clear known CVEs, then create non-root user
+RUN apk update && apk upgrade --no-cache \
+    && addgroup -g 1001 appgroup && adduser -D -u 1001 -G appgroup appuser
 
 # Copy production dependencies and application code from deps stage
 COPY --from=deps --chown=appuser:appgroup /app/node_modules ./node_modules
