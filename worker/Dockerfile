@@ -1,5 +1,5 @@
 # Stage 1: Build dependencies
-FROM python:3.11-alpine AS builder
+FROM python:3.11.15-alpine3.24 AS builder
 
 WORKDIR /app
 COPY requirements.txt ./
