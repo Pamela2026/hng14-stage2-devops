@@ -26,6 +26,7 @@ def exit_gracefully(signum, frame):
     print("Worker shutting down...")
     sys.exit(0)
 
+
 signal.signal(signal.SIGTERM, exit_gracefully)
 signal.signal(signal.SIGINT, exit_gracefully)
 
