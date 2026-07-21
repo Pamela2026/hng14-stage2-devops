@@ -28,4 +28,4 @@ ENV PYTHONPATH=/install/lib/python3.11/site-packages:$PYTHONPATH
 
 USER appuser
 
-CMD ["/install/bin/python", "worker.py"]
+CMD ["python", "worker.py"]
