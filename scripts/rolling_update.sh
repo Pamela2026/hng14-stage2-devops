@@ -50,6 +50,7 @@ done
 echo "==> Healthy. Swapping ${NEW_CONTAINER} -> ${CONTAINER}"
 docker stop "${CONTAINER}"
 docker rm   "${CONTAINER}"
+docker stop "${NEW_CONTAINER}"
 docker rm   "${NEW_CONTAINER}"
 
 # shellcheck disable=SC2086
