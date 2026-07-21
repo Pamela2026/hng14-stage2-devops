@@ -1,0 +1,363 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+env:
+  API_IMAGE: hng14-api
+  FRONTEND_IMAGE: hng14-frontend
+  WORKER_IMAGE: hng14-worker
+
+jobs:
+  # ─────────────────────────────────────────────
+  # STAGE 1 — LINT
+  # ─────────────────────────────────────────────
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install flake8
+
+      - name: flake8 — api
+        run: flake8 api/
+
+      - name: flake8 — worker
+        run: flake8 worker/
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
+      - name: eslint — frontend
+        working-directory: frontend
+        run: npm ci && npx eslint app.js
+
+      - name: hadolint — api/Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: api/Dockerfile
+          failure-threshold: warning
+
+      - name: hadolint — frontend/Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: frontend/Dockerfile
+          failure-threshold: warning
+
+      - name: hadolint — worker/Dockerfile
+        uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: worker/Dockerfile
+          failure-threshold: warning
+
+  # ─────────────────────────────────────────────
+  # STAGE 2 — TEST
+  # ─────────────────────────────────────────────
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - run: pip install -r requirements.txt
+        working-directory: api
+
+      - name: pytest with coverage
+        working-directory: api
+        run: |
+          pytest tests/ \
+            --cov=. \
+            --cov-report=xml:coverage.xml \
+            --cov-report=term-missing \
+            -v
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: api/coverage.xml
+
+  # ─────────────────────────────────────────────
+  # STAGE 3 — BUILD
+  # ─────────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build images
+        run: |
+          docker build -t $API_IMAGE:${{ github.sha }}      -t $API_IMAGE:latest      api/
+          docker build -t $FRONTEND_IMAGE:${{ github.sha }} -t $FRONTEND_IMAGE:latest frontend/
+          docker build -t $WORKER_IMAGE:${{ github.sha }}   -t $WORKER_IMAGE:latest   worker/
+
+      - name: Save images as tar
+        run: |
+          docker save $API_IMAGE:${{ github.sha }}      | gzip > api-image.tar.gz
+          docker save $FRONTEND_IMAGE:${{ github.sha }} | gzip > frontend-image.tar.gz
+          docker save $WORKER_IMAGE:${{ github.sha }}   | gzip > worker-image.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: docker-images
+          path: "*.tar.gz"
+          retention-days: 1
+
+  # ─────────────────────────────────────────────
+  # STAGE 4 — SECURITY SCAN
+  # ─────────────────────────────────────────────
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+
+      - name: Load images
+        run: |
+          docker load < api-image.tar.gz
+          docker load < frontend-image.tar.gz
+          docker load < worker-image.tar.gz
+
+      - name: Trivy scan — api
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.API_IMAGE }}:${{ github.sha }}"
+          format: sarif
+          output: trivy-api.sarif
+          severity: CRITICAL
+          exit-code: "1"
+
+      - name: Trivy scan — frontend
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.FRONTEND_IMAGE }}:${{ github.sha }}"
+          format: sarif
+          output: trivy-frontend.sarif
+          severity: CRITICAL
+          exit-code: "1"
+
+      - name: Trivy scan — worker
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.WORKER_IMAGE }}:${{ github.sha }}"
+          format: sarif
+          output: trivy-worker.sarif
+          severity: CRITICAL
+          exit-code: "1"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: trivy-sarif-results
+          path: "*.sarif"
+
+  # ─────────────────────────────────────────────
+  # STAGE 5 — INTEGRATION TEST
+  # ─────────────────────────────────────────────
+  integration-test:
+    name: Integration Test
+    runs-on: ubuntu-latest
+    needs: security-scan
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+
+      - name: Load images
+        run: |
+          docker load < api-image.tar.gz
+          docker load < frontend-image.tar.gz
+          docker load < worker-image.tar.gz
+
+      - name: Write stack .env
+        run: |
+          cat > .env <<EOF
+          REDIS_IMAGE=redis:7.0-alpine
+          REDIS_HOST=redis
+          REDIS_PORT=6379
+          REDIS_URL=redis://redis:6379
+          REDIS_CONTAINER_NAME=hng14-redis
+          REDIS_CPU_LIMIT=0.50
+          REDIS_MEMORY_LIMIT=256M
+          API_IMAGE=${{ env.API_IMAGE }}:${{ github.sha }}
+          API_CONTAINER_NAME=hng14-api
+          API_HOST_PORT=8000
+          API_SERVICE_PORT=8000
+          CORS_ORIGINS=http://localhost:3000
+          API_CPU_LIMIT=0.50
+          API_MEMORY_LIMIT=256M
+          FRONTEND_IMAGE=${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+          FRONTEND_CONTAINER_NAME=hng14-frontend
+          FRONTEND_HOST_PORT=3000
+          FRONTEND_SERVICE_PORT=3000
+          API_URL=http://api:8000
+          FRONTEND_CPU_LIMIT=0.50
+          FRONTEND_MEMORY_LIMIT=256M
+          WORKER_IMAGE=${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          WORKER_CONTAINER_NAME=hng14-worker
+          WORKER_DELAY=1
+          WORKER_CPU_LIMIT=0.50
+          WORKER_MEMORY_LIMIT=256M
+          APP_ENV=ci
+          EOF
+
+      - name: Start stack
+        run: docker compose up -d --wait
+        timeout-minutes: 3
+
+      - name: Run integration test
+        run: |
+          set -euo pipefail
+
+          JOB_ID=$(curl -sf -X POST http://localhost:3000/submit \
+            -H "Content-Type: application/json" | jq -r '.job_id')
+          echo "Submitted job: ${JOB_ID}"
+
+          DEADLINE=$(( $(date +%s) + 30 ))
+          while true; do
+            STATUS=$(curl -sf "http://localhost:3000/status/${JOB_ID}" | jq -r '.status')
+            echo "  status: ${STATUS}"
+            [[ "${STATUS}" == "completed" ]] && { echo "Job completed."; break; }
+            (( $(date +%s) >= DEADLINE )) && { echo "ERROR: timed out."; exit 1; }
+            sleep 2
+          done
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v --remove-orphans
+
+  # ─────────────────────────────────────────────
+  # STAGE 6 — DEPLOY  (main branch only)
+  # Runs entirely on the GitHub runner — no external server needed.
+  # Simulates production by running the stack as named containers,
+  # then performs a scripted rolling update to the new SHA image.
+  # ─────────────────────────────────────────────
+  deploy:
+    name: Deploy
+    runs-on: ubuntu-latest
+    needs: integration-test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: docker-images
+
+      - name: Load images
+        run: |
+          docker load < api-image.tar.gz
+          docker load < frontend-image.tar.gz
+          docker load < worker-image.tar.gz
+
+      - name: Create network and start Redis
+        run: |
+          docker network create hng14-network
+          docker run -d \
+            --name hng14-redis \
+            --network hng14-network \
+            --health-cmd "redis-cli ping" \
+            --health-interval 5s \
+            --health-retries 5 \
+            redis:7.0-alpine
+
+          # Wait for Redis to be healthy
+          for i in $(seq 1 20); do
+            [ "$(docker inspect -f '{{.State.Health.Status}}' hng14-redis)" = "healthy" ] && break
+            sleep 2
+          done
+
+      - name: Start "current" stack (simulates what is already running in prod)
+        run: |
+          docker run -d \
+            --name hng14-api \
+            --network hng14-network \
+            -p 8000:8000 \
+            -e REDIS_URL=redis://hng14-redis:6379 \
+            -e PORT=8000 \
+            -e CORS_ORIGINS=http://localhost:3000 \
+            ${{ env.API_IMAGE }}:${{ github.sha }}
+
+          docker run -d \
+            --name hng14-frontend \
+            --network hng14-network \
+            -p 3000:3000 \
+            -e API_URL=http://hng14-api:8000 \
+            -e PORT=3000 \
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }}
+
+          docker run -d \
+            --name hng14-worker \
+            --network hng14-network \
+            -e REDIS_URL=redis://hng14-redis:6379 \
+            -e WORKER_DELAY=1 \
+            ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+
+          # Wait for API and frontend to be reachable
+          for svc in "http://localhost:8000/docs" "http://localhost:3000/"; do
+            for i in $(seq 1 15); do
+              curl -sf "${svc}" >/dev/null 2>&1 && break
+              sleep 2
+            done
+          done
+
+      - name: Rolling update — api
+        run: |
+          chmod +x scripts/rolling_update.sh
+          scripts/rolling_update.sh \
+            hng14-api \
+            ${{ env.API_IMAGE }}:${{ github.sha }} \
+            http://localhost:8000/docs \
+            60
+
+      - name: Rolling update — frontend
+        run: |
+          scripts/rolling_update.sh \
+            hng14-frontend \
+            ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} \
+            http://localhost:3000/ \
+            60
+
+      - name: Rolling update — worker (no HTTP endpoint, direct swap)
+        run: |
+          docker stop hng14-worker && docker rm hng14-worker
+          docker run -d \
+            --name hng14-worker \
+            --network hng14-network \
+            -e REDIS_URL=redis://hng14-redis:6379 \
+            -e WORKER_DELAY=1 \
+            ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+
+      - name: Verify stack is healthy after deploy
+        run: |
+          curl -sf http://localhost:8000/docs >/dev/null
+          curl -sf http://localhost:3000/ >/dev/null
+          echo "Deploy verified."
+
+      - name: Cleanup
+        if: always()
+        run: |
+          docker rm -f hng14-api hng14-frontend hng14-worker hng14-redis 2>/dev/null || true
+          docker network rm hng14-network 2>/dev/null || true
