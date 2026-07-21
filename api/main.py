@@ -18,11 +18,12 @@ else:
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[origin.strip() for origin in CORS_ORIGINS if origin.strip()],
+    allow_origins=[o.strip() for o in CORS_ORIGINS if o.strip()],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.post("/jobs")
 def create_job():
@@ -30,6 +31,7 @@ def create_job():
     r.lpush("job", job_id)
     r.hset(f"job:{job_id}", "status", "queued")
     return {"job_id": job_id}
+
 
 @app.get("/jobs/{job_id}")
 def get_job(job_id: str):
@@ -39,6 +41,7 @@ def get_job(job_id: str):
     if isinstance(status, bytes):
         status = status.decode()
     return {"job_id": job_id, "status": status}
+
 
 if __name__ == "__main__":
     import uvicorn
