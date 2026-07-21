@@ -17,7 +17,7 @@ WORKDIR /app
 
 # Upgrade Alpine packages, remove npm (not needed at runtime), then create non-root user
 RUN apk update && apk upgrade --no-cache \
-    && rm -rf /usr/lib/node_modules/npm \
+    && rm -rf /usr/local/lib/node_modules/npm \
     && addgroup -g 1001 appgroup && adduser -D -u 1001 -G appgroup appuser
 
 # Copy production dependencies and application code from deps stage
