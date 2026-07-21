@@ -172,6 +172,14 @@ jobs:
           severity: CRITICAL
           exit-code: "0"
 
+      - name: Debug — frontend image
+        if: always()
+        run: |
+          docker run --rm ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} node -v
+          docker run --rm ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} sh -c "npm -v || true"
+          docker run --rm ${{ env.FRONTEND_IMAGE }}:${{ github.sha }} sh -c \
+            "find / -name package.json -exec grep -H '\"tar\"' {} \; 2>/dev/null || true"
+
       - name: Trivy scan — frontend (table)
         if: always()
         uses: aquasecurity/trivy-action@master
