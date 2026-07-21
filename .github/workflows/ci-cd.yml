@@ -138,7 +138,34 @@ jobs:
           docker load < frontend-image.tar.gz
           docker load < worker-image.tar.gz
 
-      - name: Trivy scan — api
+      - name: Trivy scan — api (table)
+        if: always()
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.API_IMAGE }}:${{ github.sha }}"
+          format: table
+          severity: CRITICAL
+          exit-code: "0"
+
+      - name: Trivy scan — frontend (table)
+        if: always()
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.FRONTEND_IMAGE }}:${{ github.sha }}"
+          format: table
+          severity: CRITICAL
+          exit-code: "0"
+
+      - name: Trivy scan — worker (table)
+        if: always()
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: "${{ env.WORKER_IMAGE }}:${{ github.sha }}"
+          format: table
+          severity: CRITICAL
+          exit-code: "0"
+
+      - name: Trivy scan — api (sarif, enforced)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "${{ env.API_IMAGE }}:${{ github.sha }}"
@@ -147,7 +174,7 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
 
-      - name: Trivy scan — frontend
+      - name: Trivy scan — frontend (sarif, enforced)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "${{ env.FRONTEND_IMAGE }}:${{ github.sha }}"
@@ -156,7 +183,7 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
 
-      - name: Trivy scan — worker
+      - name: Trivy scan — worker (sarif, enforced)
         uses: aquasecurity/trivy-action@master
         with:
           image-ref: "${{ env.WORKER_IMAGE }}:${{ github.sha }}"
