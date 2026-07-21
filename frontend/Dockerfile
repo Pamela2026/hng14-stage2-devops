@@ -1,5 +1,5 @@
 # Stage 1: Dependencies
-FROM node:20-alpine AS deps
+FROM node:20.20.2-alpine3.22 AS deps
 
 WORKDIR /app
 
@@ -11,7 +11,7 @@ RUN npm install --production --ignore-scripts
 
 
 # Stage 2: Final production image
-FROM node:20-alpine AS production
+FROM node:20.20.2-alpine3.22 AS production
 
 WORKDIR /app
 
