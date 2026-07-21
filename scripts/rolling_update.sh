@@ -35,9 +35,10 @@ echo "==> Waiting up to ${TIMEOUT}s for ${NEW_CONTAINER} to be healthy"
 DEADLINE=$(( $(date +%s) + TIMEOUT ))
 sleep 2
 
-until docker exec "${NEW_CONTAINER}" \
-  python -c "import urllib.request; urllib.request.urlopen('http://localhost:${SERVICE_PORT}${HEALTH_PATH}')" \
-  >/dev/null 2>&1; do
+NEW_IP=$(docker inspect "${NEW_CONTAINER}" \
+  --format "{{(index .NetworkSettings.Networks \"${NETWORK}\").IPAddress}}")
+
+until curl -sf "http://${NEW_IP}:${SERVICE_PORT}${HEALTH_PATH}" >/dev/null 2>&1; do
   if (( $(date +%s) >= DEADLINE )); then
     echo "ERROR: health check timed out — aborting, old container left running."
     docker logs "${NEW_CONTAINER}" || true
