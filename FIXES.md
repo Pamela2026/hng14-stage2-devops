@@ -23,3 +23,6 @@
 - Line number: 3-41
 - Problem: The project had no documented environment variables or run instructions for the updated production-ready configuration.
 - Solution: Added a `Environment variables` section documenting API, frontend, and worker settings, plus `Run` instructions for each component.
+
+## Additional Fixes
+- Frontend Dockerfile and worker code fixes have been moved to `Troubleshooting.md`.
