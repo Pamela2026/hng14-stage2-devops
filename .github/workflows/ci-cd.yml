@@ -74,7 +74,7 @@ jobs:
         with:
           python-version: "3.11"
 
-      - run: pip install -r requirements.txt
+      - run: pip install -r requirements-dev.txt
         working-directory: api
 
       - name: pytest with coverage
