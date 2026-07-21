@@ -18,7 +18,7 @@ RUN addgroup -g 1000 appgroup && adduser -D -u 1000 -G appgroup appuser \
 COPY --from=builder /install /install
 
 # Upgrade bundled pip/wheel/setuptools to clear known CVEs
-RUN pip install --no-cache-dir --upgrade "pip>=26.1.2" "wheel>=0.46.2" setuptools
+RUN pip install --no-cache-dir pip==26.1.2 wheel==0.46.2
 
 # Copy application code
 COPY worker.py .
