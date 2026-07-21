@@ -7,9 +7,10 @@ on:
     branches: ["**"]
 
 env:
-  API_IMAGE: hng14-api
-  FRONTEND_IMAGE: hng14-frontend
-  WORKER_IMAGE: hng14-worker
+  REGISTRY: localhost:5000
+  API_IMAGE: localhost:5000/hng14-api
+  FRONTEND_IMAGE: localhost:5000/hng14-frontend
+  WORKER_IMAGE: localhost:5000/hng14-worker
 
 jobs:
   # ─────────────────────────────────────────────
@@ -97,25 +98,37 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: test
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build images
+      - name: Build and push images to local registry
         run: |
           docker build -t $API_IMAGE:${{ github.sha }}      -t $API_IMAGE:latest      api/
           docker build -t $FRONTEND_IMAGE:${{ github.sha }} -t $FRONTEND_IMAGE:latest frontend/
           docker build -t $WORKER_IMAGE:${{ github.sha }}   -t $WORKER_IMAGE:latest   worker/
+          docker push $API_IMAGE:${{ github.sha }}
+          docker push $API_IMAGE:latest
+          docker push $FRONTEND_IMAGE:${{ github.sha }}
+          docker push $FRONTEND_IMAGE:latest
+          docker push $WORKER_IMAGE:${{ github.sha }}
+          docker push $WORKER_IMAGE:latest
 
-      - name: Save images as tar
+      - name: Save registry data as artifact
         run: |
-          docker save $API_IMAGE:${{ github.sha }}      | gzip > api-image.tar.gz
-          docker save $FRONTEND_IMAGE:${{ github.sha }} | gzip > frontend-image.tar.gz
-          docker save $WORKER_IMAGE:${{ github.sha }}   | gzip > worker-image.tar.gz
+          docker run --rm \
+            --volumes-from $(docker ps -qf "ancestor=registry:2") \
+            -v $(pwd):/backup alpine \
+            tar czf /backup/registry-data.tar.gz /var/lib/registry
 
       - uses: actions/upload-artifact@v4
         with:
-          name: docker-images
-          path: "*.tar.gz"
+          name: registry-data
+          path: registry-data.tar.gz
           retention-days: 1
 
   # ─────────────────────────────────────────────
@@ -125,18 +138,30 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     needs: build
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: docker-images
+          name: registry-data
 
-      - name: Load images
+      - name: Restore registry data
         run: |
-          docker load < api-image.tar.gz
-          docker load < frontend-image.tar.gz
-          docker load < worker-image.tar.gz
+          docker run --rm \
+            --volumes-from $(docker ps -qf "ancestor=registry:2") \
+            -v $(pwd):/backup alpine \
+            tar xzf /backup/registry-data.tar.gz -C /
+
+      - name: Pull images from local registry
+        run: |
+          docker pull $API_IMAGE:${{ github.sha }}
+          docker pull $FRONTEND_IMAGE:${{ github.sha }}
+          docker pull $WORKER_IMAGE:${{ github.sha }}
 
       - name: Trivy scan — api (table)
         if: always()
@@ -205,18 +230,24 @@ jobs:
     name: Integration Test
     runs-on: ubuntu-latest
     needs: security-scan
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: docker-images
+          name: registry-data
 
-      - name: Load images
+      - name: Restore registry data
         run: |
-          docker load < api-image.tar.gz
-          docker load < frontend-image.tar.gz
-          docker load < worker-image.tar.gz
+          docker run --rm \
+            --volumes-from $(docker ps -qf "ancestor=registry:2") \
+            -v $(pwd):/backup alpine \
+            tar xzf /backup/registry-data.tar.gz -C /
 
       - name: Write stack .env
         run: |
@@ -286,18 +317,27 @@ jobs:
     runs-on: ubuntu-latest
     needs: integration-test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/download-artifact@v4
         with:
-          name: docker-images
+          name: registry-data
 
-      - name: Load images
+      - name: Restore registry data and pull images
         run: |
-          docker load < api-image.tar.gz
-          docker load < frontend-image.tar.gz
-          docker load < worker-image.tar.gz
+          docker run --rm \
+            --volumes-from $(docker ps -qf "ancestor=registry:2") \
+            -v $(pwd):/backup alpine \
+            tar xzf /backup/registry-data.tar.gz -C /
+          docker pull $API_IMAGE:${{ github.sha }}
+          docker pull $FRONTEND_IMAGE:${{ github.sha }}
+          docker pull $WORKER_IMAGE:${{ github.sha }}
 
       - name: Create network and start Redis
         run: |
