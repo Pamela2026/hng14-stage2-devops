@@ -3,8 +3,16 @@ name: CI/CD Pipeline
 on:
   push:
     branches: ["**"]
+    paths-ignore:
+      - "**.md"
+      - ".env.example"
+      - ".gitignore"
   pull_request:
     branches: ["**"]
+    paths-ignore:
+      - "**.md"
+      - ".env.example"
+      - ".gitignore"
 
 env:
   REGISTRY: localhost:5000
@@ -338,7 +346,8 @@ jobs:
           name: registry-data
 
       - name: Restore registry data and pull images
-        run: |
+
+    run: |
           docker run --rm \
             --volumes-from $(docker ps -qf "ancestor=registry:2") \
             -v $(pwd):/backup alpine \
