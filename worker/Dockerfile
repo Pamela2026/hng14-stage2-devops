@@ -24,7 +24,7 @@ COPY --from=builder /install /install
 COPY worker.py .
 
 ENV PATH=/install/bin:$PATH
-ENV PYTHONPATH=/install/lib/python3.11/site-packages:$PYTHONPATH
+ENV PYTHONPATH=/install/lib/python3.11/site-packages
 
 USER appuser
 
